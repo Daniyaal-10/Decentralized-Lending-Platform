@@ -20,7 +20,7 @@ contract LendingPlatform {
     // Lender provides a loan
     function provideLoan(address borrower, uint amount, uint interest, uint duration) external {
         require(msg.sender == owner, "Only owner can provide loans");
-        require(loans[borrower].amount == 0, "Existing loan must be repaid first");
+        require(loans[borrower].amount == 0 || loans[borrower].repaid, "Existing loan must be repaid first");
         
         loans[borrower] = Loan({
             amount: amount,
@@ -28,6 +28,8 @@ contract LendingPlatform {
             dueDate: block.timestamp + duration,
             repaid: false
         });
+
+        payable(borrower).transfer(amount); // transfer loan to borrower
     }
 
     // Borrower repays the loan
@@ -41,5 +43,26 @@ contract LendingPlatform {
 
         loan.repaid = true;
     }
-}
 
+    // Get loan details
+    function getLoanDetails(address borrower) external view returns (uint, uint, uint, bool) {
+        Loan memory loan = loans[borrower];
+        return (loan.amount, loan.interest, loan.dueDate, loan.repaid);
+    }
+
+    // Withdraw collected funds by the owner
+    function withdraw() external {
+        require(msg.sender == owner, "Only owner can withdraw funds");
+        payable(owner).transfer(address(this).balance);
+    }
+
+    // Check loan status
+    function checkLoanStatus(address borrower) external view returns (string memory) {
+        Loan memory loan = loans[borrower];
+        if (loan.amount == 0) return "No loan found";
+        return loan.repaid ? "Repaid" : "Active";
+    }
+
+    // Accept ETH fallback
+    receive() external payable {}
+}
