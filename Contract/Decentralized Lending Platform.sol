@@ -13,6 +13,11 @@ contract LendingPlatform {
 
     mapping(address => Loan) public loans;
 
+    event LoanProvided(address indexed borrower, uint amount, uint interest, uint dueDate);
+    event LoanRepaid(address indexed borrower, uint totalPaid);
+    event LoanExtended(address indexed borrower, uint newDueDate);
+    event Withdrawn(uint amount);
+
     constructor() {
         owner = msg.sender;
     }
@@ -29,7 +34,8 @@ contract LendingPlatform {
             repaid: false
         });
 
-        payable(borrower).transfer(amount); // transfer loan to borrower
+        payable(borrower).transfer(amount);
+        emit LoanProvided(borrower, amount, interest, block.timestamp + duration);
     }
 
     // Borrower repays the loan
@@ -42,6 +48,7 @@ contract LendingPlatform {
         require(msg.value >= totalDue, "Insufficient amount to repay");
 
         loan.repaid = true;
+        emit LoanRepaid(msg.sender, msg.value);
     }
 
     // Get loan details
@@ -53,7 +60,9 @@ contract LendingPlatform {
     // Withdraw collected funds by the owner
     function withdraw() external {
         require(msg.sender == owner, "Only owner can withdraw funds");
-        payable(owner).transfer(address(this).balance);
+        uint balance = address(this).balance;
+        payable(owner).transfer(balance);
+        emit Withdrawn(balance);
     }
 
     // Check loan status
@@ -61,6 +70,28 @@ contract LendingPlatform {
         Loan memory loan = loans[borrower];
         if (loan.amount == 0) return "No loan found";
         return loan.repaid ? "Repaid" : "Active";
+    }
+
+    // Extend loan deadline
+    function extendLoanDuration(address borrower, uint additionalTime) external {
+        require(msg.sender == owner, "Only owner can extend loan");
+        require(loans[borrower].amount > 0, "Loan not found");
+        require(!loans[borrower].repaid, "Cannot extend a repaid loan");
+
+        loans[borrower].dueDate += additionalTime;
+        emit LoanExtended(borrower, loans[borrower].dueDate);
+    }
+
+    // Calculate total repayment amount
+    function calculateTotalDue(address borrower) external view returns (uint) {
+        Loan memory loan = loans[borrower];
+        require(loan.amount > 0, "No loan found");
+        return loan.amount + (loan.amount * loan.interest) / 100;
+    }
+
+    // Check if user has active unpaid loan
+    function hasActiveLoan(address user) external view returns (bool) {
+        return loans[user].amount > 0 && !loans[user].repaid;
     }
 
     // Accept ETH fallback
