@@ -12,11 +12,13 @@ contract LendingPlatform {
     }
 
     mapping(address => Loan) public loans;
+    address[] public borrowers; // track borrowers for stats
 
     event LoanProvided(address indexed borrower, uint amount, uint interest, uint dueDate);
     event LoanRepaid(address indexed borrower, uint totalPaid);
     event LoanExtended(address indexed borrower, uint newDueDate);
     event Withdrawn(uint amount);
+    event PenaltyAdded(address indexed borrower, uint newAmount);
 
     constructor() {
         owner = msg.sender;
@@ -34,6 +36,7 @@ contract LendingPlatform {
             repaid: false
         });
 
+        borrowers.push(borrower);
         payable(borrower).transfer(amount);
         emit LoanProvided(borrower, amount, interest, block.timestamp + duration);
     }
@@ -92,6 +95,41 @@ contract LendingPlatform {
     // Check if user has active unpaid loan
     function hasActiveLoan(address user) external view returns (bool) {
         return loans[user].amount > 0 && !loans[user].repaid;
+    }
+
+    // Calculate time left until loan due
+    function getRemainingTime(address borrower) external view returns (int) {
+        Loan memory loan = loans[borrower];
+        require(loan.amount > 0, "No loan found");
+        return int(loan.dueDate) - int(block.timestamp);
+    }
+
+    // Check if a loan is overdue
+    function isLoanOverdue(address borrower) external view returns (bool) {
+        Loan memory loan = loans[borrower];
+        require(loan.amount > 0, "No loan found");
+        return (block.timestamp > loan.dueDate) && !loan.repaid;
+    }
+
+    // Penalize overdue loans by increasing their amount
+    function penalizeOverdueLoan(address borrower, uint penaltyPercentage) external {
+        require(msg.sender == owner, "Only owner can penalize");
+        require(block.timestamp > loans[borrower].dueDate, "Loan not overdue");
+        require(!loans[borrower].repaid, "Loan already repaid");
+
+        uint penalty = (loans[borrower].amount * penaltyPercentage) / 100;
+        loans[borrower].amount += penalty;
+
+        emit PenaltyAdded(borrower, loans[borrower].amount);
+    }
+
+    // Get total active loans
+    function totalActiveLoans() external view returns (uint count) {
+        for (uint i = 0; i < borrowers.length; i++) {
+            if (loans[borrowers[i]].amount > 0 && !loans[borrowers[i]].repaid) {
+                count++;
+            }
+        }
     }
 
     // Accept ETH fallback
